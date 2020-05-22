@@ -1,6 +1,7 @@
 use cranelift::prelude::*;
 use cranelift_module::{DataContext, Linkage, Module};
 use cranelift_simplejit::{SimpleJITBackend, SimpleJITBuilder};
+use weld::{Data, WeldConf, WeldContext, WeldModule, WeldValue};
 
 pub enum Expr {
     Literal(String),
@@ -45,4 +46,31 @@ fn main() {
         module: Module<SimpleJITBackend>,
     }
     println!("Hello from Susie!");
+    #[repr(C)]
+    struct MyArgs {
+        a: i32,
+        b: i32,
+    }
+
+    let code = "|a: i32, b: i32| a + b";
+    let conf = &WeldConf::new();
+    let mut module = WeldModule::compile(code, conf).unwrap();
+
+    // Weld accepts a packed C struct as an argument.
+    let args = &MyArgs { a: 9, b: 60 };
+    let input = &WeldValue::new_from_data(args as *const _ as Data);
+
+    // A context manages memory.
+    let context = &mut WeldContext::new(conf).unwrap();
+    // Running a Weld module and reading a value out of it is unsafe!
+    unsafe {
+        // Run the module, which returns a wrapper `WeldValue`.
+        let result = module.run(context, input).unwrap();
+        // The data is just a pointer: cast it to the expected type
+        let data = result.data() as *const i32;
+
+        let result = (*data).clone();
+        assert_eq!(args.a + args.b, result);
+        println!("Result from Weld: {output}", output = result);
+    }
 }
